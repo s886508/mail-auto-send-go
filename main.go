@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
@@ -107,17 +108,90 @@ func loadMailTemplate(path string) map[string]interface{} {
 	return data
 }
 
+func randStr(strSize int, randType string) string {
+	var dictionary string
+	if randType == "alphanum" {
+		dictionary = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	}
+
+	var strBytes = make([]byte, strSize)
+	_, _ = rand.Read(strBytes)
+	for k, v := range strBytes {
+		strBytes[k] = dictionary[v%byte(len(dictionary))]
+	}
+	return string(strBytes)
+}
+
+func chunkSplit(body string, limit int, end string) string {
+	var charSlice []rune
+	// push characters to slice
+	for _, char := range body {
+		charSlice = append(charSlice, char)
+	}
+
+	var result = ""
+	for len(charSlice) >= 1 {
+		// convert slice/array back to string
+		// but insert end at specified limit
+		result = result + string(charSlice[:limit]) + end
+
+		// discard the elements that were copied over to result
+		charSlice = charSlice[limit:]
+
+		// change the limit
+		// to cater for the last few words in
+		if len(charSlice) < limit {
+			limit = len(charSlice)
+		}
+	}
+	return result
+}
+
 func createMail(from string, to string, subject string, content string, attachment string) *gmail.Message {
+	_, err := os.Stat(attachment)
+	if os.IsNotExist(err) {
+		log.Printf("attachment does not exist: %s\n", attachment)
+		return nil
+	}
+
+	fileBytes, err := ioutil.ReadFile(attachment)
+	if err != nil {
+		log.Printf("Fail to load attachment file: %v\n", err)
+		return nil
+	}
+
+	fileMIMEType := http.DetectContentType(fileBytes)
+	fileData := base64.StdEncoding.EncodeToString(fileBytes)
+	boundary := randStr(32, "alphanum")
+
 	subjectEnc := fmt.Sprintf("=?utf-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
 	mailBody := fmt.Sprintf(
-		"From: %s\r\n"+
-			"To: %s\r\n"+
-			"Subject: %s\r\n\r\n"+
-			"%s",
-		from,
+		"Content-Type: multipart/mixed; boundary=%s\n"+
+			"MIME-Version: 1.0\n"+
+			"To: %s\n"+
+			"Subject: %s\n\n"+
+			"--%s\n"+
+			"Content-Type: text/plain; charset=\"UTF-8\"\n"+
+			"MIME-Version: 1.0\n"+
+			"Content-Transfer-Encoding: 7bit\n\n"+
+			"%s\n\n"+
+			"--%s\n"+
+			"Content-Type: %s; name=\"%s\"\n"+
+			"MIME-Version: 1.0\n"+
+			"Content-Transfer-Encoding: base64\n"+
+			"Content-Disposition: attachment; filename=\"%s\"\n\n"+
+			"%s--%s--",
+		boundary,
 		to,
 		subjectEnc,
+		boundary,
 		content,
+		boundary,
+		fileMIMEType,
+		attachment,
+		attachment,
+		chunkSplit(fileData, 76, "\n"),
+		boundary,
 	)
 
 	return &gmail.Message{
@@ -144,19 +218,34 @@ func main() {
 		log.Fatalf("Unable to retrieve Gmail client: %v", err)
 	}
 
-	mailLists := loadMailList("maillist.csv")
+	mailList := loadMailList("maillist.csv")
 	data := loadMailTemplate("message.json")
 
-	for _, toUser := range mailLists {
+	for _, toUser := range mailList {
+		mailToName := toUser[0]
 		mailTo := toUser[1]
-		message := createMail(data["from"].(string), mailTo, data["subject"].(string), data["content"].(string), "")
+		attachmentPath := fmt.Sprintf("%s.pdf", mailToName)
+		message := createMail(
+			data["from"].(string),
+			mailTo,
+			data["subject"].(string),
+			data["content"].(string),
+			attachmentPath,
+		)
+		if message == nil {
+			continue
+		}
 
 		_, err = srv.Users.Messages.Send("me", message).Do()
 		if err != nil {
-			log.Printf("[FAILED] error sending mail to: %s err: %v", mailTo, err)
-			log.Println()
-		} else {
-			log.Printf("[SUCCESS] sending mail to: %s", mailTo)
+			log.Printf("[FAILED] error sending mail to: %s %s err: %v\n", mailToName, mailTo, err)
+			continue
 		}
+
+		err = os.Remove(attachmentPath)
+		if err != nil {
+			log.Printf("Failed to remove attachment file: %s\n", attachmentPath)
+		}
+		log.Printf("[SUCCESS] sending mail to: %s %s", mailToName, mailTo)
 	}
 }
