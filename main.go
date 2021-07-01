@@ -73,6 +73,58 @@ func saveToken(path string, token *oauth2.Token) {
 	json.NewEncoder(f).Encode(token)
 }
 
+func loadMailList(path string) [][]string {
+	if len(path) == 0 {
+		log.Fatal("empty path to load mail list")
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		log.Fatal("Fail to open mail list file")
+	}
+	csvReader := csv.NewReader(f)
+	mails, err := csvReader.ReadAll()
+	if err != nil {
+		log.Fatal("Fail to parse mail list")
+	}
+	return mails
+}
+
+func loadMailTemplate(path string) map[string]interface{} {
+	if len(path) == 0 {
+		log.Fatal("empty path to load mail template")
+	}
+
+	var data map[string]interface{}
+	b, err := ioutil.ReadFile("message.json")
+	if err != nil {
+		log.Fatal("Fail to read email content")
+	}
+	err = json.Unmarshal(b, &data)
+	if err != nil {
+		log.Fatalf("Fail to parse email content")
+	}
+	return data
+}
+
+func createMail(from string, to string, subject string, content string, attachment string) *gmail.Message {
+	subjectEnc := fmt.Sprintf("=?utf-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
+	mailBody := fmt.Sprintf(
+		"From: %s\r\n"+
+			"To: %s\r\n"+
+			"Subject: %s\r\n\r\n"+
+			"%s",
+		from,
+		to,
+		subjectEnc,
+		content,
+	)
+
+	return &gmail.Message{
+		Raw: base64.URLEncoding.EncodeToString([]byte(mailBody)),
+	}
+}
+
 func main() {
 	ctx := context.Background()
 	b, err := ioutil.ReadFile("credentials.json")
@@ -92,51 +144,19 @@ func main() {
 		log.Fatalf("Unable to retrieve Gmail client: %v", err)
 	}
 
-	// Load mail list
-	f, err := os.Open("maillist.csv")
-	if err != nil {
-		log.Fatal("Fail to open mail list file")
-	}
-	csvReader := csv.NewReader(f)
-	mailLists, err := csvReader.ReadAll()
-	if err != nil {
-		log.Fatal("Fail to parse mail list")
-	}
+	mailLists := loadMailList("maillist.csv")
+	data := loadMailTemplate("message.json")
 
-	// Load mail subject and content
-	var data map[string]interface{}
-	b, err = ioutil.ReadFile("message.json")
-	if err != nil {
-		log.Fatal("Fail to read email content")
-	}
-	err = json.Unmarshal(b, &data)
-	if err != nil {
-		log.Fatalf("Fail to parse email content")
-	}
-
-	subject := fmt.Sprintf("=?utf-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(data["subject"].(string))))
 	for _, toUser := range mailLists {
-		mailAddress := toUser[1]
-		mailBody := fmt.Sprintf(
-			"From: %s\r\n"+
-				"To: %s\r\n"+
-				"Subject: %s\r\n\r\n"+
-				"%s",
-			data["from"],
-			mailAddress,
-			subject,
-			data["content"],
-		)
+		mailTo := toUser[1]
+		message := createMail(data["from"].(string), mailTo, data["subject"].(string), data["content"].(string), "")
 
-		var message gmail.Message
-		message.Raw = base64.URLEncoding.EncodeToString([]byte(mailBody))
-
-		_, err = srv.Users.Messages.Send("me", &message).Do()
+		_, err = srv.Users.Messages.Send("me", message).Do()
 		if err != nil {
-			log.Printf("Fail to send mail to: %s err: %v", mailAddress, err)
+			log.Printf("[FAILED] error sending mail to: %s err: %v", mailTo, err)
 			log.Println()
 		} else {
-			log.Printf("Success sending mail to: %s", mailAddress)
+			log.Printf("[SUCCESS] sending mail to: %s", mailTo)
 		}
 	}
 }
