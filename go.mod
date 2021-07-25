@@ -1,4 +1,4 @@
-module github.com/s886508/salary-auto-send-go
+module github.com/s886508/mail-auto-send-go
 
 go 1.16
 
