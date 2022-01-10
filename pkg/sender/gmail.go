@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/s886508/mail-auto-send-go/pkg/cfg"
 	"github.com/s886508/mail-auto-send-go/pkg/mailutil"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -18,7 +19,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-func SendFromGMail(ctx context.Context) {
+func SendFromGMail(ctx context.Context, cfg *cfg.MailSenderConfig) {
 	b, err := ioutil.ReadFile("credentials.json")
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
@@ -36,8 +37,8 @@ func SendFromGMail(ctx context.Context) {
 		log.Fatalf("Unable to retrieve Gmail client: %v", err)
 	}
 
-	mailList := mailutil.LoadMailList("maillist.csv")
-	mailTemplate := mailutil.LoadMailTemplate("message.json")
+	mailList := mailutil.LoadMailList(cfg.MaillistConf)
+	mailTemplate := mailutil.LoadMailTemplate(cfg.MailtemplateConf)
 
 	for _, receiver := range mailList {
 		mailToName := receiver.Name

@@ -1,0 +1,4 @@
+{
+  "maillist": "configs/maillist.csv",
+  "mailtemplate": "configs/message.json"
+}
