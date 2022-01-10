@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -12,6 +11,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/s886508/mail-auto-send-go/pkg/mailutil"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
@@ -36,18 +36,18 @@ func SendFromGMail(ctx context.Context) {
 		log.Fatalf("Unable to retrieve Gmail client: %v", err)
 	}
 
-	mailList := loadMailList("maillist.csv")
-	data := loadMailTemplate("message.json")
+	mailList := mailutil.LoadMailList("maillist.csv")
+	mailTemplate := mailutil.LoadMailTemplate("message.json")
 
-	for _, toUser := range mailList {
-		mailToName := toUser[0]
-		mailTo := toUser[1]
-		attachmentPath := fmt.Sprintf("%s.pdf", mailToName)
-		message := createMail(
-			data["from"].(string),
+	for _, receiver := range mailList {
+		mailToName := receiver.Name
+		mailTo := receiver.EMail
+		attachmentPath := receiver.AttachmentFile
+		message := createGMail(
+			mailTemplate.EMail,
 			mailTo,
-			data["subject"].(string),
-			data["content"].(string),
+			mailTemplate.Subject,
+			mailTemplate.Content,
 			attachmentPath,
 		)
 		if message == nil {
@@ -124,40 +124,6 @@ func saveToken(path string, token *oauth2.Token) {
 	json.NewEncoder(f).Encode(token)
 }
 
-func loadMailList(path string) [][]string {
-	if len(path) == 0 {
-		log.Fatal("empty path to load mail list")
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		log.Fatal("Fail to open mail list file")
-	}
-	csvReader := csv.NewReader(f)
-	mails, err := csvReader.ReadAll()
-	if err != nil {
-		log.Fatal("Fail to parse mail list")
-	}
-	return mails
-}
-
-func loadMailTemplate(path string) map[string]interface{} {
-	if len(path) == 0 {
-		log.Fatal("empty path to load mail template")
-	}
-
-	var data map[string]interface{}
-	b, err := ioutil.ReadFile("message.json")
-	if err != nil {
-		log.Fatal("Fail to read email content")
-	}
-	err = json.Unmarshal(b, &data)
-	if err != nil {
-		log.Fatalf("Fail to parse email content")
-	}
-	return data
-}
-
 func randStr(strSize int, randType string) string {
 	var dictionary string
 	if randType == "alphanum" {
@@ -197,7 +163,7 @@ func chunkSplit(body string, limit int, end string) string {
 	return result
 }
 
-func createMail(from string, to string, subject string, content string, attachment string) *gmail.Message {
+func createGMail(from string, to string, subject string, content string, attachment string) *gmail.Message {
 	_, err := os.Stat(attachment)
 	if os.IsNotExist(err) {
 		log.Printf("attachment does not exist: %s\n", attachment)
