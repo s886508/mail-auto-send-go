@@ -1,4 +1,5 @@
 {
   "maillist": "configs/maillist.csv",
-  "mailtemplate": "configs/message.json"
+  "mailtemplate": "configs/message.json",
+  "apikey": ""
 }
