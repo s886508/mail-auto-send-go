@@ -7,9 +7,10 @@ import (
 )
 
 type MailSenderConfig struct {
-	MaillistConf     string `json:"maillist"`
+	MaillistConf     string `json:"mailList"`
 	MailtemplateConf string `json:"mailTemplate"`
-	ApiKey           string `json:"apikey"`
+	ApiKey           string `json:"sendgridApiKey"`
+	GmailCredentials string `json:"gmailCredentials"`
 }
 
 // LoadMailSenderConfig loads config from given file path.

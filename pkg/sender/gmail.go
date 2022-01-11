@@ -20,7 +20,7 @@ import (
 )
 
 func SendFromGMail(ctx context.Context, cfg *cfg.MailSenderConfig) {
-	b, err := ioutil.ReadFile("credentials.json")
+	b, err := ioutil.ReadFile(cfg.GmailCredentials)
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}

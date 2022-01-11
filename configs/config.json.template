@@ -1,5 +1,6 @@
 {
-  "maillist": "configs/maillist.csv",
-  "mailtemplate": "configs/message.json",
-  "apikey": ""
+  "mailList": "configs/maillist.csv",
+  "mailTemplate": "configs/message.json",
+  "sendgridApiKey": "",
+  "gmailCredentials": ""
 }
